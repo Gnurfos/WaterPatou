@@ -8,7 +8,7 @@ import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.physics.bullet.collision.btBoxShape
 import com.badlogic.gdx.physics.bullet.dynamics.btRigidBody
-import com.sun.media.jfxmediaimpl.MediaDisposer.Disposable
+import com.badlogic.gdx.utils.Disposable
 
 class CubePart(physics: Physics, size: Float, color: Color) extends  Disposable {
 
