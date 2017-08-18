@@ -9,7 +9,6 @@ import com.badlogic.gdx.graphics.g3d._
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight
 import com.badlogic.gdx.graphics.g3d.utils.{CameraInputController, ModelBuilder}
 import com.badlogic.gdx.math.Vector3
-import com.badlogic.gdx.physics.bullet.dynamics.btJointFeedback
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -18,14 +17,15 @@ class MyGame extends Game {
   var modelBatch: ModelBatch = null
   var cam: PerspectiveCamera = null
   var camControl: CameraInputController = null
-  var envir: Environment = null
+  var airEnvir: Environment = null
+  var waterEnvir: Environment = null
 
   var parts = ArrayBuffer.empty[CubePart]
 
   var physics: Physics = null
 
   var waterModel: Model = null
-  var waterInstance: ModelInstance = null
+  var waterSurface: Array[ModelInstance] = null
 
   def createDumbPart = {
     val size = Math.random().toFloat * 10f
@@ -59,12 +59,20 @@ class MyGame extends Game {
         ColorAttribute.createDiffuse(Color.BLUE),
         new BlendingAttribute(true, 0.6f)),
       Usage.Position | Usage.Normal)
-    waterInstance = new ModelInstance(waterModel)
-    waterInstance.transform.scale(100f, 100f, 100f)
+    waterSurface = Array(new ModelInstance(waterModel), new ModelInstance(waterModel))
+    waterSurface(0).transform.scale(100f, 100f, 100f)
+    waterSurface(1).transform.scale(100f, 100f, 100f)
+    waterSurface(1).transform.rotate(1f, 0f, 0f, 180f)
 
-    envir = new Environment
-    envir.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.4f, 0.4f, 0.4f, 1f))
-    envir.add(new DirectionalLight().set(0.8f, 0.8f, 0.8f, -1f, -0.8f, -0.2f))
+    airEnvir = new Environment
+    airEnvir.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.4f, 0.4f, 0.4f, 1f))
+    airEnvir.add(new DirectionalLight().set(0.8f, 0.8f, 0.8f, -1f, -0.8f, -0.2f))
+
+    waterEnvir = new Environment
+    waterEnvir.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.2f, 0.2f, 0.4f, 1f))
+    waterEnvir.set(new ColorAttribute(ColorAttribute.Fog, 0f, 0f, 0.13f, 1f))
+    waterEnvir.add(new DirectionalLight().set(0.6f, 0.6f, 0.8f, -1f, -0.8f, -0.2f))
+
     camControl = new CameraInputController(cam)
     Gdx.input.setInputProcessor(camControl)
   }
@@ -84,32 +92,46 @@ class MyGame extends Game {
 
     val delta = Math.min(1f / 30f, Gdx.graphics.getDeltaTime)
     physics.step(delta)
-
     parts.foreach(_.update())
-    val pos = new Vector3
-    parts(0).instance.transform.getTranslation(pos)
-    cam.lookAt(pos)
-    val camDist = pos.cpy().sub(cam.position)
-    val followAt = 40f
-    if (camDist.len() > followAt) {
-      val l = camDist.len()
-      val deltaV = camDist.scl((1-Math.pow(0.05f, delta)).toFloat*(l-followAt)/l)
-      cam.translate(deltaV)
-    }
-    cam.update()
 
-    Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
-    Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT)
-    modelBatch.begin(cam)
-    parts.foreach(p => modelBatch.render(p.instance, envir))
-    modelBatch.render(waterInstance, envir)
-    modelBatch.end()
-    camControl.update()
+    moveCamera(delta)
+
+    renderThings
 
     if (Gdx.input.isKeyPressed(Input.Keys.ESCAPE)) {
       Gdx.app.exit()
     }
 
+  }
+
+  def renderThings: Unit = {
+    val envir = if (cam.position.z > 0f) airEnvir else waterEnvir
+    if (cam.position.z > 0f)
+      Gdx.gl.glClearColor(0f, 0f, 0f, 1)
+    else
+      Gdx.gl.glClearColor(0f, 0f, 0.13f, 1)
+
+    Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth, Gdx.graphics.getHeight)
+    Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT)
+    modelBatch.begin(cam)
+    parts.foreach(p => modelBatch.render(p.instance, envir))
+    waterSurface.foreach(instance => modelBatch.render(instance, envir))
+    modelBatch.end()
+  }
+
+  def moveCamera(delta: Float): Unit = {
+    camControl.update()
+    val pos = new Vector3
+    parts(0).instance.transform.getTranslation(pos)
+    cam.lookAt(pos)
+    val camToPatou = pos.cpy().sub(cam.position)
+    val maxCameraDistance = 40f
+    if (camToPatou.len() > maxCameraDistance) {
+      val l = camToPatou.len()
+      val catchup = camToPatou.scl((1 - Math.pow(0.05f, delta)).toFloat * (l - maxCameraDistance) / l)
+      cam.translate(catchup)
+    }
+    cam.update()
   }
 
   override def dispose() = {
